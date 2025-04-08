@@ -1,0 +1,77 @@
+# Python compiled files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.py[cod]
+*.so
+
+# Ignore editor and IDE settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Virtual environment
+.env/
+venv/
+env/
+ENV/
+.venv/
+
+# Django-related files
+db.sqlite3
+*.log
+*.pot
+*.py[cod]
+celerybeat-schedule  # Celery schedule persistence file
+
+# Environment variables
+.env
+*.env
+
+# Static and media files (if managed/stored locally)
+staticfiles/
+media/
+
+# Migrations folders (optional - include migrations in production)
+**/migrations/*.pyc
+**/migrations/__pycache__/
+
+# Unit test and coverage reports
+htmlcov/
+coverage.xml
+.coverage
+*.cover
+.cache
+nosetests.xml
+coverage/
+
+# System-specific files
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+
+# Deployment files
+*.pem
+*.crt
+*.key
+
+# Pipfile and Poetry file if used for dependencies
+pipenv.lock
+poetry.lock
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints
+
+# pytest cache and other testing logs
+.pytest_cache/
+.tox/
+.coverage.*
+
+# Build files
+/dist/
+*.egg-info/
+*.egg
+build/
