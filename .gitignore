@@ -75,3 +75,6 @@ poetry.lock
 *.egg-info/
 *.egg
 build/
+
+# Noxin specific
+noxin-front
