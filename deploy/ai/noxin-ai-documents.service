@@ -1,0 +1,25 @@
+[Unit]
+Description=Noxin offline PDF, DOCX and OCR worker
+After=local-fs.target
+
+[Service]
+User=noxin-documents
+Group=noxin-ai
+Environment=LANG=C.UTF-8
+Environment=HOME=/run/noxin-ai-documents
+Environment=PYTHONDONTWRITEBYTECODE=1
+RuntimeDirectory=noxin-ai-documents
+RuntimeDirectoryMode=0750
+WorkingDirectory=/opt/noxin-ai/app
+UMask=0007
+ExecStart=/usr/bin/gunicorn --bind unix:/run/noxin-ai-documents/http.sock --umask 0o007 --workers 1 --timeout 300 gateway:documents
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+LimitCORE=0
+MemoryMax=1536M
+OOMPolicy=kill
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+[Unit]
+Description=Noxin local AI API
+After=noxin-ai-model.service noxin-ai-documents.service
+Wants=noxin-ai-model.service noxin-ai-documents.service
+
+[Service]
+User=noxin-ai
+Group=noxin-ai
+EnvironmentFile=/etc/noxin-ai/runtime.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+RuntimeDirectory=noxin-ai-gateway
+RuntimeDirectoryMode=0750
+WorkingDirectory=/opt/noxin-ai/app
+UMask=0007
+ExecStart=/usr/bin/gunicorn --bind unix:/run/noxin-ai-gateway/http.sock --bind 127.0.0.1:8090 --umask 0o007 --workers 1 --threads 4 --timeout 310 gateway:application
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=yes
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

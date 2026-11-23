@@ -39,3 +39,7 @@ Otwórz katalog główny projektu w VS Code. W menu **…** przy nagłówku **Ex
 Katalog wygeneruje kartę i adres `/#/moduly/raporty`. Kod modułu zostanie pobrany przy wejściu na jego stronę. Stan, komponenty i ewentualne połączenie z API należą do danego modułu.
 
 Routing z hashem umożliwia bezpośrednie otwieranie adresów modułów przy statycznym hostingu. Jeśli moduł potrzebuje danych, może połączyć się z własnym API. Django może służyć jako panel administracyjny dla danych, które go wymagają.
+
+Moduł **Lokalny czat AI** jest dostępny pod `/#/moduly/ai`. Korzysta z prywatnej usługi `/api/ai/`. Instrukcja wdrożenia i testów jest w [deploy/ai/README.md](../deploy/ai/README.md).
+
+W trybie deweloperskim Vite nasłuchuje na pętli lokalnej i kieruje `/api/ai/` pod `http://127.0.0.1:8090`. Możesz ustawić `NOXIN_DEV_AI_URL` na adres HTTPS Agenta w LAN. Dla lokalnego CA podaj ścieżkę do publicznego certyfikatu w `NODE_EXTRA_CA_CERTS` przed uruchomieniem Node. Jeżeli Agent wymaga logowania, podaj jego nagłówek autoryzacji (np. `Basic …`) w zmiennej środowiskowej procesu `NOXIN_DEV_AI_AUTH`.

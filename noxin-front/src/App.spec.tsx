@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { createAppRoutes } from "./App";
 import type { NoxinModule } from "./modules";
+import { modules as registeredModules } from "./modules";
 
 beforeEach(() => {
   // jsdom's AbortSignal is incompatible with the Node Request used by the router.
@@ -85,4 +86,39 @@ test("provides a return link for unknown addresses", () => {
   expect(
     screen.getByRole("link", { name: "Wróć do modułów" }).getAttribute("href"),
   ).toBe("/");
+});
+
+test("opens the local AI module and sends selected document text through its own API", async () => {
+  const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/ai/health") {
+      return Response.json({ ready: true, web: false });
+    }
+    if (url === "/api/ai/document?kind=pdf&page=1&ocr=0") {
+      expect(options?.body).toBeInstanceOf(File);
+      return Response.json({ page: 1, pages: 2, ocr: false, fragments: ["Faktura 724", "Brutto 123 PLN"] });
+    }
+    expect(url).toBe("/api/ai/chat");
+    expect(options?.headers).toMatchObject({ "X-Noxin-Request": "1" });
+    expect(JSON.parse(options?.body as string)).toMatchObject({
+      preset: "invoice",
+      source: "Brutto 123 PLN",
+    });
+    return Response.json({ text: "Kwota brutto to 123 PLN.", seconds: 1, limited: false, trimmed: false });
+  });
+  vi.stubGlobal("fetch", fetch);
+  renderAt("/", registeredModules);
+  fireEvent.click(screen.getByRole("link", { name: /Lokalny czat AI/ }));
+  await screen.findByText("Lokalny model gotowy");
+  fireEvent.change(screen.getByLabelText("Dokument PDF lub DOCX"), {
+    target: { files: [new File(["%PDF-1.4"], "faktura.pdf")] },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Odczytaj stronę dokumentu" }));
+  await screen.findByText("Strona 1 z 2");
+  fireEvent.change(screen.getByLabelText("Fragment"), { target: { value: "1" } });
+  fireEvent.change(screen.getByLabelText("Zadanie"), { target: { value: "invoice" } });
+  fireEvent.click(screen.getByRole("button", { name: "Wyślij" }));
+  expect(await screen.findByText("Kwota brutto to 123 PLN.")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Wyczyść rozmowę" }));
+  expect(screen.queryByText("Kwota brutto to 123 PLN.")).toBeNull();
+  expect(screen.queryByText("Brutto 123 PLN")).toBeNull();
 });

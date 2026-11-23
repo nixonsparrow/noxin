@@ -1,0 +1,59 @@
+{
+	auto_https disable_redirects
+	skip_install_trust
+}
+
+(private) {
+	@outside not remote_ip __LAN_CIDR__
+	respond @outside 403
+	basicauth {
+		__USER__ __PASSWORD_HASH__
+	}
+	header {
+		Cache-Control "no-store"
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		Content-Security-Policy "default-src 'self'; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+	}
+}
+
+https://__SITE_IP__ {
+	bind __SITE_IP__
+	tls internal
+	route {
+		import private
+		handle /api/ai/* {
+			import /etc/caddy/noxin-agent.caddy
+		}
+		handle {
+			root * /opt/noxin-ai/site
+			file_server
+		}
+	}
+}
+
+https://__SITE_IP__:8443 {
+	bind __SITE_IP__
+	tls internal
+	@chat_ui {
+		method GET HEAD
+		path / /index.html /chat/* /_app/* /assets/* /icons/* /fonts/* /favicon* /manifest* /build.json /robots.txt /sw.js /service-worker.js /props /health /v1/health /models /v1/models
+	}
+	@chat {
+		method POST
+		header Content-Type application/json*
+		path /v1/chat/completions /v1/chat/completions/control /tokenize /apply-template
+	}
+	route {
+		import private
+		reverse_proxy @chat_ui unix//run/noxin-ai-model/http.sock {
+			header_up -Authorization
+			header_up -Cookie
+		}
+		reverse_proxy @chat unix//run/noxin-ai-model/http.sock {
+			header_up -Authorization
+			header_up -Cookie
+		}
+		respond 404
+	}
+}

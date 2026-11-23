@@ -1,0 +1,22 @@
+[Unit]
+Description=Noxin local llama.cpp inference
+After=local-fs.target
+
+[Service]
+User=noxin-llama
+Group=noxin-ai
+EnvironmentFile=/etc/noxin-ai/runtime.env
+RuntimeDirectory=noxin-ai-model
+RuntimeDirectoryMode=0750
+UMask=0007
+ExecStart=/opt/noxin-ai/llama-server --host /run/noxin-ai-model/http.sock --model ${NOXIN_AI_MODEL} --alias noxin-local --ctx-size ${NOXIN_AI_CONTEXT} --threads 4 --threads-batch 4 --parallel 1 --batch-size 256 --ubatch-size 128 --predict 320 --gpu-layers 0 --reasoning off --offline --no-agent --no-webui-mcp-proxy --no-slots --no-cache-prompt --no-cors-credentials --log-verbosity 1
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+LimitCORE=0
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target
