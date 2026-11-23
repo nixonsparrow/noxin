@@ -4,6 +4,40 @@ Noxin udostępnia czat, odczyt stron PDF i DOCX oraz OCR po polsku i angielsku. 
 
 Noxin nie zapisuje rozmów ani wyciągów dokumentów. Są dostępne w pamięci otwartego modułu. Pliki przesłane do OCR są przetwarzane w prywatnym katalogu tymczasowym i usuwane po zakończeniu przetwarzania. Llama Chat może zachowywać historię w pamięci przeglądarki. Na współdzielonym urządzeniu używaj trybu prywatnego lub wyczyść dane witryny dla portu 8443.
 
+## Instalacja Agenta obok działającego Noxin
+
+Użyj tego trybu w istniejącym LXC z Debianem 13. W katalogu repozytorium wykonaj jako root:
+
+```bash
+bash deploy/ai/install.sh --agent-only
+curl --fail --silent --show-error http://127.0.0.1:8090/api/ai/health
+python3 deploy/ai/smoke-test.py
+```
+
+Instalator pobiera model i zależności, kompiluje silnik oraz uruchamia usługi Agenta na pętli lokalnej. Instalacja wymaga połączenia z Internetem. Gotowy model i OCR działają offline. Tryb `--agent-only` pomija instalację frontendu i konfigurację serwera WWW.
+
+Na istniejącym serwerze WWW skieruj `/api/ai/*` na `http://127.0.0.1:8090`, zachowując ścieżkę i uwierzytelnianie Noxin. W Caddy możesz zainstalować gotowy fragment:
+
+```bash
+if [[ ! -e /etc/caddy/noxin-agent.caddy ]]; then
+    install -o root -g caddy -m 0640 deploy/ai/noxin-agent.caddy /etc/caddy/
+fi
+```
+
+W istniejącym bloku witryny dodaj poniższy fragment. Jeśli masz już `route`, dodaj go po uwierzytelnieniu i przed ogólną regułą dla `/api/*` lub obsługą frontendu. Jeśli blok `handle /api/ai/*` już istnieje, użyj w nim przygotowanego importu.
+
+```caddyfile
+handle /api/ai/* {
+	import /etc/caddy/noxin-agent.caddy
+}
+```
+
+```bash
+caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && systemctl reload caddy
+```
+
+Otwórz `/#/moduly/ai` pod dotychczasowym adresem Noxin. Po wykryciu modelu pojawi się status „Lokalny model gotowy”.
+
 ## 1. Audyt hosta
 
 Skopiuj `audit-proxmox.sh` na host lub użyj odczytu z własnego checkoutu. Wykonaj w powłoce Proxmox jako administrator.

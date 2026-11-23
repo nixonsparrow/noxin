@@ -2,12 +2,16 @@
 set -euo pipefail
 umask 077
 
-if [[ $# != 4 || $EUID != 0 ]]; then
-    echo 'Użycie w LXC: bash install.sh KATALOG_DIST IPv4 CIDR_LAN UŻYTKOWNIK_CADDY' >&2
+agent_only=false
+if [[ $# == 1 && $1 == --agent-only ]]; then
+    agent_only=true
+fi
+if [[ $EUID != 0 ]] || { ! "$agent_only" && [[ $# != 4 ]]; }; then
+    echo 'Użycie jako root: bash install.sh --agent-only' >&2
+    echo 'Świeży LXC: bash install.sh KATALOG_DIST IPv4 CIDR_LAN UŻYTKOWNIK_CADDY' >&2
     exit 1
 fi
 source_dir=$(cd -- "$(dirname -- "$0")" && pwd)
-dist=$1 site_ip=$2 lan=$3 username=$4
 state=/etc/noxin-ai
 app=/opt/noxin-ai
 model_name=Qwen3.5-0.8B-Q4_0.gguf
@@ -15,32 +19,50 @@ model_sha=57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf
 model_url="https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/9447f74101aeb4e93621884dfa36ee8effb8831b/$model_name"
 
 . /etc/os-release
-if [[ $ID != debian || $VERSION_ID != 13 || $(systemd-detect-virt --container) != lxc || $(hostname -s) != noxin-ai ]]; then
-    echo "Uruchom instalator wewnątrz dedykowanego LXC noxin-ai z Debianem 13." >&2
+if [[ $ID != debian || $VERSION_ID != 13 || $(systemd-detect-virt --container) != lxc ]]; then
+    echo "Uruchom instalator wewnątrz LXC z Debianem 13." >&2
     exit 1
 fi
 [[ $(dpkg --print-architecture) == amd64 ]]
 [[ $(awk '/^flags[[:space:]]*:/ { print; exit }' /proc/cpuinfo) =~ (^|[[:space:]])sse4_2([[:space:]]|$) ]]
-[[ -f $dist/index.html && -d $dist/assets && $username =~ ^[a-zA-Z0-9_.-]+$ ]]
-if [[ -e $state/installed ]]; then
-    echo "Usługa jest już zainstalowana. Użyj procedury aktualizacji." >&2
+if [[ ! -e $state/managed && -e $app ]]; then
+    echo "Wykryto istniejący, niezarządzany katalog $app." >&2
     exit 1
 fi
-if [[ ! -e $state/managed ]] && { [[ -e /etc/caddy/Caddyfile || -e $app ]] || command -v caddy >/dev/null; }; then
-    echo "Wykryto istniejące pliki Caddy lub Noxin AI. Wybierz osobny, świeży LXC." >&2
-    exit 1
+packages=(
+    build-essential cmake git curl ca-certificates gunicorn python3 poppler-utils
+    libreoffice-writer-nogui ocrmypdf tesseract-ocr-pol tesseract-ocr-eng fonts-dejavu-core
+)
+if ! "$agent_only"; then
+    dist=$1 site_ip=$2 lan=$3 username=$4
+    if [[ $(hostname -s) != noxin-ai ]]; then
+        echo "Pełna instalacja wymaga dedykowanego LXC noxin-ai. Dla działającego Noxin użyj --agent-only." >&2
+        exit 1
+    fi
+    [[ -f $dist/index.html && -d $dist/assets && $username =~ ^[a-zA-Z0-9_.-]+$ ]]
+    if [[ -e $state/installed ]]; then
+        echo "Usługa jest już zainstalowana. Użyj procedury aktualizacji." >&2
+        exit 1
+    fi
+    if [[ ! -e $state/manages-caddy ]] && { [[ -e /etc/caddy/Caddyfile ]] || command -v caddy >/dev/null; }; then
+        echo "Wykryto istniejącą instalację Caddy. Użyj --agent-only." >&2
+        exit 1
+    fi
+    packages+=(caddy openssl)
 fi
 
 install -d -m 0700 "$state"
 touch "$state/managed"
-install -d -m 0755 "$app" "$app/app" "$app/models" "$app/site"
-systemctl mask caddy.service
+if ! "$agent_only"; then
+    touch "$state/manages-caddy"
+    systemctl mask caddy.service
+fi
+install -d -m 0755 "$app" "$app/app" "$app/models"
 apt-get update
-apt-get install -y --no-install-recommends build-essential cmake git curl ca-certificates openssl \
-    caddy gunicorn python3 poppler-utils libreoffice-writer-nogui ocrmypdf \
-    tesseract-ocr-pol tesseract-ocr-eng fonts-dejavu-core
+apt-get install -y --no-install-recommends "${packages[@]}"
 
-python3 - "$site_ip" "$lan" <<'PY'
+if ! "$agent_only"; then
+    python3 - "$site_ip" "$lan" <<'PY'
 from ipaddress import IPv4Address, IPv4Network
 import subprocess
 import sys
@@ -53,12 +75,12 @@ if ip not in lan or not any(lan.subnet_of(net) for net in ranges):
 if not any(value.split("/", 1)[0] == str(ip) for value in interfaces):
     sys.exit("Podany adres nie należy do kontenera.")
 PY
+fi
 
 getent group noxin-ai >/dev/null || groupadd --system noxin-ai
 for user in noxin-ai noxin-llama noxin-documents; do
     id "$user" >/dev/null 2>&1 || useradd --system --gid noxin-ai --no-create-home --shell /usr/sbin/nologin "$user"
 done
-usermod -aG noxin-ai caddy
 
 if [[ ! -e $app/llama-server ]]; then
     bash "$source_dir/build-llama.sh" b12244 "$app/llama-server"
@@ -81,19 +103,26 @@ EOF
 fi
 install -m 0644 "$source_dir"/{gateway,documents,public_web}.py "$app/app/"
 install -m 0644 "$source_dir"/noxin-ai-*.service /etc/systemd/system/
-cp -a -- "$dist/." "$app/site/"
-chmod -R a+rX,go-w "$app/site"
 systemctl daemon-reload
 systemctl enable --now noxin-ai-model.service noxin-ai-documents.service
 systemctl enable noxin-ai-gateway.service
 systemctl restart noxin-ai-gateway.service
 bash "$source_dir/wait-ready.sh"
-runuser -u caddy -- curl --fail --silent --compressed \
-    --unix-socket /run/noxin-ai-model/http.sock http://localhost/ >/dev/null
 curl --fail --silent --show-error --max-time 3 http://127.0.0.1:8090/api/ai/health \
     | python3 -c 'import json,sys; sys.exit(not json.load(sys.stdin)["ready"])'
 tesseract --list-langs | grep -Fx eng
 tesseract --list-langs | grep -Fx pol
+
+if "$agent_only"; then
+    echo "Agent AI jest gotowy pod http://127.0.0.1:8090/api/ai/health."
+    exit 0
+fi
+
+usermod -aG noxin-ai caddy
+runuser -u caddy -- curl --fail --silent --compressed --unix-socket /run/noxin-ai-model/http.sock http://localhost/ >/dev/null
+install -d -m 0755 "$app/site"
+cp -a -- "$dist/." "$app/site/"
+chmod -R a+rX,go-w "$app/site"
 
 if [[ ! -e /etc/caddy/noxin-agent.caddy ]]; then
     install -o root -g caddy -m 0640 "$source_dir/noxin-agent.caddy" /etc/caddy/

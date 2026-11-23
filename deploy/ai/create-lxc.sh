@@ -42,6 +42,11 @@ if [[ ! $available_disk =~ ^[0-9]+$ ]] || (( available_disk < (disk + 2) * 1024 
     exit 1
 fi
 
-pct create "$vmid" "$template" +    --hostname noxin-ai --ostype debian --unprivileged 1 --onboot 1 +    --cores "$cores" --memory "$memory" --swap "$swap" --rootfs "$storage:$disk" +    --net0 "name=eth0,bridge=$bridge,ip=$address,gw=$gateway,type=veth"
+lxc_options=(
+    --hostname noxin-ai --ostype debian --unprivileged 1 --onboot 1
+    --cores "$cores" --memory "$memory" --swap "$swap" --rootfs "$storage:$disk"
+    --net0 "name=eth0,bridge=$bridge,ip=$address,gw=$gateway,type=veth"
+)
+pct create "$vmid" "$template" "${lxc_options[@]}"
 pct start "$vmid"
 pct config "$vmid"
