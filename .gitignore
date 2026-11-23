@@ -9,6 +9,10 @@ __pycache__/
 # Ignore editor and IDE settings
 .idea/
 .vscode/
+!/.vscode/
+/.vscode/*
+!/.vscode/tasks.json
+!/.vscode/settings.json
 *.swp
 *.swo
 
@@ -75,6 +79,3 @@ poetry.lock
 *.egg-info/
 *.egg
 build/
-
-# Noxin specific
-noxin-front

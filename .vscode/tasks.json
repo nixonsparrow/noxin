@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0",
+  "presentation": {
+    "group": "noxin",
+    "panel": "dedicated"
+  },
+  "tasks": [
+    {
+      "label": "Noxin frontend",
+      "type": "shell",
+      "command": "npm",
+      "windows": {
+        "command": "npm.cmd"
+      },
+      "args": ["run", "frontend"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Noxin backend",
+      "type": "shell",
+      "command": "npm",
+      "windows": {
+        "command": "npm.cmd"
+      },
+      "args": ["run", "backend:django-admin"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Noxin frontend + backend",
+      "dependsOn": ["Noxin frontend", "Noxin backend"],
+      "dependsOrder": "parallel",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}
