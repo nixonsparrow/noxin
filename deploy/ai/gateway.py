@@ -160,7 +160,8 @@ def generate(request, deadline):
 
 
 def document_request(messages, source, prompts, deadline):
-    if len(source) <= CONTEXT_SIZE * 4:
+    probe_chars = CONTEXT_SIZE * 8
+    if len(source) <= probe_chars:
         request = completion_request(messages, source, prompts["document_label"])
         if fit_history(request, deadline):
             return request
@@ -168,30 +169,40 @@ def document_request(messages, source, prompts, deadline):
     task = [messages[0], messages[-1]]
     context_error = "Polecenie przekracza kontekst modelu. Wpisz krótsze polecenie."
 
-    def collect_halves(text):
+    def collect_notes(text):
+        if len(text) <= probe_chars:
+            request = completion_request(task, text, prompts["document_label"], prompts["collect_notes"], NOTES_TOKENS)
+            if fits_context(request, deadline):
+                yield generate(request, deadline)[0]
+                return
         if len(text) < 2:
             raise ApiError(413, context_error)
         middle = len(text) // 2
         boundary = max(text.rfind("\n", middle // 2, middle), text.rfind(" ", middle // 2, middle))
         cut = boundary + 1 if boundary >= 0 else middle
-        return "\n\n".join((collect_notes(text[:cut]), collect_notes(text[cut:])))
+        yield from collect_notes(text[:cut])
+        yield from collect_notes(text[cut:])
 
-    def collect_notes(text):
-        if len(text) <= CONTEXT_SIZE * 4:
-            request = completion_request(task, text, prompts["document_label"], prompts["collect_notes"], NOTES_TOKENS)
-            if fits_context(request, deadline):
-                return generate(request, deadline)[0]
-        notes = collect_halves(text)
-        request = completion_request(task, notes, prompts["notes_label"], prompts["merge_notes"], NOTES_TOKENS)
-        if not fits_context(request, deadline):
+    notes = list(collect_notes(source))
+    while True:
+        combined = "\n\n".join(notes)
+        if len(combined) <= probe_chars:
+            request = completion_request(messages, combined, prompts["notes_label"])
+            if fit_history(request, deadline):
+                return request
+        if len(notes) == 1:
             raise ApiError(413, context_error)
-        return generate(request, deadline)[0]
 
-    notes = collect_halves(source)
-    request = completion_request(messages, notes, prompts["notes_label"])
-    if not fit_history(request, deadline):
-        raise ApiError(413, context_error)
-    return request
+        merged = []
+        for index in range(0, len(notes) - 1, 2):
+            pair = "\n\n".join(notes[index:index + 2])
+            request = completion_request(task, pair, prompts["notes_label"], prompts["merge_notes"], NOTES_TOKENS)
+            if not fits_context(request, deadline):
+                raise ApiError(413, context_error)
+            merged.append(generate(request, deadline)[0])
+        if len(notes) % 2:
+            merged.append(notes[-1])
+        notes = merged
 
 
 def chat(payload, document=False):

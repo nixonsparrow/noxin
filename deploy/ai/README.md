@@ -94,7 +94,7 @@ pct exec "$CTID" -- tar -xf /root/noxin-ai.tar -C /root/noxin-bundle
 pct enter "$CTID"
 ```
 
-W kontenerze użyj uzgodnionego adresu IP, CIDR i użytkownika. Wpisz hasło w interaktywnym monicie. Instalator pobierze pakiety, skompiluje przypięte wydanie `llama.cpp` bez AVX, AVX2 i FMA, pobierze Qwen3.5 0.8B Q4_0 i sprawdzi SHA-256. Następnie uruchomi model z 4 wątkami, pojedynczym slotem i kontekstem 2048 tokenów, sprawdzi start usług i dostęp HTTPS bez hasła. Budowa na J4105 może potrwać.
+W kontenerze użyj uzgodnionego adresu IP, CIDR i użytkownika. Wpisz hasło w interaktywnym monicie. Instalator pobierze pakiety, skompiluje przypięte wydanie `llama.cpp` bez AVX, AVX2 i FMA, pobierze Qwen3.5 0.8B Q4_0 i sprawdzi SHA-256. Następnie uruchomi model z maksymalnie 4 wątkami, pojedynczym slotem i kontekstem 2048 tokenów, sprawdzi start usług i dostęp HTTPS bez hasła. Budowa na J4105 może potrwać.
 
 ```bash
 cd /root/noxin-bundle
@@ -122,6 +122,7 @@ Otwórz `https://192.168.1.50/#/moduly/ai` i `https://192.168.1.50:8443/`. Użyj
 - Uruchom `python3 deploy/ai/smoke-test.py` w kontenerze. Sprawdza rozmowę po polsku, ekstrakcję PDF, DOCX i skan faktury oraz podaje czasy dwóch odpowiedzi. Skan testowy powinien zwrócić numer 6438 i kwotę 123,00 PLN. Odpowiedzi modelu porównaj z fragmentami źródłowymi.
 - Na komputerze i telefonie sprawdź logowanie do obu interfejsów, rozmowę i wysłanie testowego dokumentu z Noxin. Sprawdź, czy bez logowania pojawia się żądanie hasła oraz czy urządzenie spoza zaufanego CIDR nie uzyskuje dostępu.
 - Obserwuj `top`, `free -h` i `df -h /` podczas generowania i OCR. Szczyt pamięci oraz skumulowany czas CPU pokaże `systemctl show noxin-ai-model noxin-ai-documents -p MemoryPeak -p CPUUsageNSec`. `ss -lntp` powinien pokazywać dwa porty LAN Caddy oraz port Agenta `8090` wyłącznie na `127.0.0.1`. `ss -lx` pokaże gniazda usług AI.
+- Model dobiera liczbę wątków według `nproc`, z domyślnym limitem 4. Przy dwóch dostępnych vCPU użyje dwóch wątków. Jeśli LXC ma dodatkowy limit CPU, ustaw odpowiadający mu `NOXIN_AI_THREADS` w `/etc/noxin-ai/runtime.env` i uruchom ponownie `noxin-ai-model`. [Dokumentacja nproc w Debianie](https://manpages.debian.org/trixie/coreutils/nproc.1.en.html)
 - Na routerze czasowo zablokuj temu LXC wyjście do Internetu przy zachowaniu LAN, również dla IPv6, jeżeli jest używany. Powtórz smoke test i sprawdź oba interfejsy z telefonu. Przywróć pierwotną regułę po teście.
 - Zweryfikuj odzyskanie po awarii w oknie testowym, gdy nikt nie korzysta z czatu. W LXC uruchom `systemctl kill --signal=SIGKILL --kill-whom=main noxin-ai-model`, a potem `bash deploy/ai/wait-ready.sh`. `systemctl show noxin-ai-model -p NRestarts` powinno pokazać restart. W oddzielnym oknie sprawdź, czy LXC i usługi wstają po restarcie hosta.
 
