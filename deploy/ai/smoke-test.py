@@ -25,15 +25,19 @@ def request(path, data=None):
 
 
 def sample_pdf():
-    stream = b"BT /F1 24 Tf 70 730 Td (UMOWA 2749) Tj ET\n"
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
-        b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
-        b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"endstream",
+        b"<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]
+    for text in (b"UMOWA 2749", b"ANEKS 5182", b"PODPIS 3954"):
+        stream = b"BT /F1 24 Tf 70 730 Td (%s) Tj ET\n" % text
+        content = len(objects) + 2
+        objects.extend([
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+            b"/Contents %d 0 R /Resources << /Font << /F1 3 0 R >> >> >>" % content,
+            b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"endstream",
+        ])
     pdf = BytesIO(b"%PDF-1.4\n")
     pdf.seek(0, 2)
     offsets = [0]
@@ -93,6 +97,14 @@ def main():
         source = " ".join(document["fragments"])
         assert needle in source, document
         print(f"Odczyt {kind.upper()} (OCR={expect_ocr}) działa.", flush=True)
+    pdf = sample_pdf()
+    selected = request("document?kind=pdf&page_from=2&page_to=3&whole_document=0", pdf)
+    assert (selected["page_from"], selected["page_to"]) == (2, 3)
+    assert selected["fragments"] == ["ANEKS 5182", "PODPIS 3954"], selected
+    whole = request("document?kind=pdf&whole_document=1", pdf)
+    assert (whole["page_from"], whole["page_to"]) == (1, 3)
+    assert whole["fragments"] == ["UMOWA 2749", "ANEKS 5182", "PODPIS 3954"], whole
+    print("Odczyt zakresu i całego PDF działa.", flush=True)
     invoice = request("chat", {
         "messages": [{"role": "user", "content": "Jaką kwotę brutto podano i jaki jest numer faktury?"}],
         "source": source,
@@ -100,6 +112,12 @@ def main():
     })
     assert invoice["text"]
     print(f'Analiza faktury ({invoice["seconds"]} s) — {invoice["text"]}')
+    summary = request("analyze", {
+        "messages": [{"role": "user", "content": "Podsumuj dokument w jednym zdaniu. Podaj numery umowy i aneksu."}],
+        "fragments": whole["fragments"],
+    })
+    assert summary["text"]
+    print(f'Streszczenie PDF ({summary["seconds"]} s) — {summary["text"]}')
 
 
 if __name__ == "__main__":

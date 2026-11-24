@@ -23,6 +23,12 @@ body {
   margin: 0;
 }
 
+button:enabled,
+select:enabled,
+input[type="file"]:enabled::file-selector-button {
+  cursor: pointer;
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
@@ -39,7 +45,6 @@ body {
   background: var(--surface);
   color: var(--accent);
   font: inherit;
-  cursor: pointer;
 }
 
 .skip-link:focus {
@@ -107,7 +112,7 @@ body {
 }
 
 .workspace {
-  padding-block: clamp(1.5rem, 6vw, 4rem);
+  padding-block: clamp(1rem, 3vw, 2rem) clamp(1.5rem, 6vw, 4rem);
 }
 
 .workspace:focus {
