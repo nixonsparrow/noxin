@@ -195,7 +195,15 @@ python3 deploy/ai/smoke-test.py
 
 Gdy test się nie powiedzie, odtwórz binarkę z `llama-server.previous` przez `cp -a` do `llama-server.next`, a następnie `mv -T` i ponów sprawdzanie po restarcie modelu. Aktualizując sam moduł, zbuduj paczkę zgodnie z etapem 2, przygotuj nowy katalog statyczny z `dist` i podmień go na `/opt/noxin-ai/site`, zostawiając poprzedni katalog do wycofania. Kopiując nowe pliki `gateway.py`, `documents.py` i `public_web.py` do `/opt/noxin-ai/app`, uruchom ponownie obie usługi Pythona i wykonaj smoke test. Pliki jednostek po podmianie wymagają `systemctl daemon-reload`. Przed zmianą Caddyfile wykonaj kopię i zweryfikuj kandydata przez `caddy validate --config <plik> --adapter caddyfile`, a po podmianie zrób `systemctl reload caddy`. Nie umieszczaj konfiguracji z hashem, kopii ani kluczy CA w repozytorium.
 
-Alternatywny [Qwen3 1.7B Q4](https://huggingface.co/Qwen/Qwen3-1.7B-GGUF) możesz przetestować po zapisaniu dotychczasowego `runtime.env`. Pobierz GGUF do `/opt/noxin-ai/models/`, zweryfikuj SHA-256 ze strony pliku i zmień `NOXIN_AI_MODEL` na ścieżkę do niego. Kontekst można przestawić na 4096 przez `NOXIN_AI_CONTEXT=4096`. Po każdej zmianie uruchom `systemctl restart noxin-ai-model noxin-ai-gateway`, sprawdź RAM i czasy generowania. Żeby wrócić do poprzednich ustawień, przywróć kopię `runtime.env` i ponownie uruchom obie usługi.
+### Zmiana modelu na Qwen3.5 2B
+
+W działającym LXC uruchom aktualny skrypt z katalogu głównego projektu jako root. Pobiera on 1,28 GB, weryfikuje SHA-256, a następnie ustawia Qwen3.5 2B Q4_K_M i kontekst 4096 tokenów. Do pobrania potrzebny jest dostęp do Internetu. [Plik GGUF i SHA-256](https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/blob/802854bfd388ed92748de119df31327962811548/Qwen3.5-2B-Q4_K_M.gguf)
+
+```bash
+bash deploy/ai/install.sh --upgrade-model
+```
+
+Przełączenie wymaga krótkiego restartu modelu i bramy API. Gdy test gotowości się nie powiedzie, instalator przywróci poprzednią konfigurację. Po udanym przełączeniu porównaj jakość i czas odpowiedzi na tych samych pytaniach. Jeśli zechcesz wrócić do poprzedniego modelu, skopiuj wypisaną kopię `runtime.env` do `/etc/noxin-ai/runtime.env` i uruchom `systemctl restart noxin-ai-model noxin-ai-gateway`.
 
 Do odtworzenia całego LXC użyj wolnego ID, składowiska z miejscem na rootfs i lokalnej kopii. Wartość `CT_BACKUP_VOLUME` odczytaj z `pvesm list`. Odtworzony LXC będzie miał ten sam IP, więc uruchom go dopiero po wyłączeniu pierwotnego albo odtwórz go na odizolowanym moście. Przy zachowaniu IP i kopii CA urządzenia zachowują dotychczasowe zaufanie HTTPS.
 

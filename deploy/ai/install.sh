@@ -3,11 +3,16 @@ set -euo pipefail
 umask 077
 
 agent_only=false
-if [[ $# == 1 && $1 == --agent-only ]]; then
-    agent_only=true
+upgrade_model=false
+if [[ $# == 1 ]]; then
+    case $1 in
+        --agent-only) agent_only=true ;;
+        --upgrade-model) upgrade_model=true ;;
+    esac
 fi
-if [[ $EUID != 0 ]] || { ! "$agent_only" && [[ $# != 4 ]]; }; then
+if [[ $EUID != 0 ]] || { ! "$agent_only" && ! "$upgrade_model" && [[ $# != 4 ]]; }; then
     echo 'Użycie jako root: bash install.sh --agent-only' >&2
+    echo 'Zmiana modelu: bash install.sh --upgrade-model' >&2
     echo 'Świeży LXC: bash install.sh KATALOG_DIST IPv4 CIDR_LAN UŻYTKOWNIK_CADDY' >&2
     exit 1
 fi
@@ -25,6 +30,57 @@ if [[ $ID != debian || $VERSION_ID != 13 || $(systemd-detect-virt --container) !
 fi
 [[ $(dpkg --print-architecture) == amd64 ]]
 [[ $(awk '/^flags[[:space:]]*:/ { print; exit }' /proc/cpuinfo) =~ (^|[[:space:]])sse4_2([[:space:]]|$) ]]
+
+ensure_model() {
+    local path=$1 url=$2 sha=$3
+    if [[ -e $path ]]; then
+        printf '%s  %s\n' "$sha" "$path" | sha256sum --check
+    else
+        curl --fail --location --retry 2 --proto '=https' --proto-redir '=https' --output "$path.part" "$url"
+        printf '%s  %s\n' "$sha" "$path.part" | sha256sum --check
+        chmod 0644 "$path.part"
+        mv -T -- "$path.part" "$path"
+    fi
+}
+
+if "$upgrade_model"; then
+    runtime="$state/runtime.env"
+    if [[ ! -e $state/managed || ! -f $runtime || ! -x $app/llama-server || ! -d $app/models ]]; then
+        echo "Najpierw zainstaluj Agenta AI w tym kontenerze." >&2
+        exit 1
+    fi
+
+    exec 9>"$state/model-upgrade.lock"
+    flock 9
+    model="$app/models/Qwen3.5-2B-Q4_K_M.gguf"
+    ensure_model "$model" \
+        'https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/802854bfd388ed92748de119df31327962811548/Qwen3.5-2B-Q4_K_M.gguf' \
+        'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223'
+
+    next=$(mktemp "$state/runtime.env.XXXXXXXX")
+    awk '! /^[[:space:]]*NOXIN_AI_(MODEL|CONTEXT)[[:space:]]*=/' "$runtime" > "$next"
+    printf 'NOXIN_AI_MODEL=%s\nNOXIN_AI_CONTEXT=4096\n' "$model" >> "$next"
+    if cmp -s "$runtime" "$next"; then
+        rm -- "$next"
+        bash "$source_dir/wait-ready.sh"
+        exit 0
+    fi
+
+    backup=$(mktemp "$state/runtime.env.previous.XXXXXXXX")
+    cp -- "$runtime" "$backup"
+    mv -T -- "$next" "$runtime"
+    if systemctl restart noxin-ai-model.service noxin-ai-gateway.service && bash "$source_dir/wait-ready.sh"; then
+        printf 'Aktywny model Qwen3.5 2B. Kopia poprzedniej konfiguracji: %s\n' "$backup"
+        exit 0
+    fi
+
+    mv -T -- "$backup" "$runtime"
+    echo "Test nowego modelu nie przeszedł. Przywrócono poprzednią konfigurację." >&2
+    systemctl restart noxin-ai-model.service noxin-ai-gateway.service
+    bash "$source_dir/wait-ready.sh"
+    exit 1
+fi
+
 if [[ ! -e $state/managed && -e $app ]]; then
     echo "Wykryto istniejący, niezarządzany katalog $app." >&2
     exit 1
@@ -86,13 +142,7 @@ if [[ ! -e $app/llama-server ]]; then
     bash "$source_dir/build-llama.sh" b12244 "$app/llama-server"
 fi
 model="$app/models/$model_name"
-if [[ ! -e $model ]]; then
-    curl --fail --location --retry 2 --proto '=https' --proto-redir '=https' --output "$model.part" "$model_url"
-    printf '%s  %s\n' "$model_sha" "$model.part" | sha256sum --check
-    chmod 0644 "$model.part"
-    mv -T -- "$model.part" "$model"
-fi
-printf '%s  %s\n' "$model_sha" "$model" | sha256sum --check
+ensure_model "$model" "$model_url" "$model_sha"
 
 if [[ ! -e $state/runtime.env ]]; then
     cat > "$state/runtime.env" <<EOF
