@@ -18,6 +18,9 @@ CONTEXT_SIZE = int(os.getenv("NOXIN_AI_CONTEXT", "2048"))
 WEB_ENABLED = os.getenv("NOXIN_AI_PUBLIC_WEB", "0") == "1"
 DOCUMENT_SOCKET = "/run/noxin-ai-documents/http.sock"
 MODEL_SOCKET = "/run/noxin-ai-model/http.sock"
+MODEL_PORT = int(os.getenv("NOXIN_AI_MODEL_PORT", "0"))
+if not 0 <= MODEL_PORT <= 65535:
+    raise ValueError("NOXIN_AI_MODEL_PORT musi być liczbą od 0 do 65535.")
 ANSWER_TOKENS = 320
 NOTES_TOKENS = 160
 CHAT_TIMEOUT = 240
@@ -99,7 +102,11 @@ class LocalConnection(http.client.HTTPConnection):
 
 def llama(path, payload=None, timeout=8):
     try:
-        with closing(LocalConnection(MODEL_SOCKET, timeout)) as connection:
+        connection = (
+            http.client.HTTPConnection("127.0.0.1", MODEL_PORT, timeout=timeout)
+            if MODEL_PORT else LocalConnection(MODEL_SOCKET, timeout)
+        )
+        with closing(connection):
             connection.request(
                 "GET" if payload is None else "POST", path,
                 None if payload is None else json.dumps(payload),

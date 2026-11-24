@@ -168,6 +168,34 @@ curl --fail http://127.0.0.1:8090/api/ai/health
 
 W `/etc/caddy/Caddyfile` zastąp zawartość bloku `handle /api/ai/*` dyrektywą `import /etc/caddy/noxin-agent.caddy`, po czym wykonaj powyższą walidację i przeładuj Caddy. [Konfiguracja reverse proxy Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 
+### Model na GPU komputera z Windows
+
+Agent i OCR mogą działać w LXC, a generowanie odpowiedzi może przejąć komputer z GPU. Rozpakuj wersję Vulkan `llama.cpp` do `build/noxin-ai-gpu/runtime` i zapisz GGUF w `build/noxin-ai-gpu`. W PowerShell, z katalogu repozytorium, sprawdź urządzenia poleceniem `& .\build\noxin-ai-gpu\runtime\llama-server.exe --list-devices` i podstaw identyfikator swojej karty. Polecenie i wyodrębniony tekst dokumentu przechodzą przez tunel SSH między LXC a komputerem. [Wydanie llama.cpp](https://github.com/ggml-org/llama.cpp/releases/tag/b12244) · [Qwen3.5 2B GGUF](https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/blob/main/Qwen3.5-2B-Q4_K_M.gguf)
+
+```powershell
+& .\build\noxin-ai-gpu\runtime\llama-server.exe --model .\build\noxin-ai-gpu\Qwen3.5-2B-Q4_K_M.gguf `
+  --device Vulkan0 --gpu-layers all --ctx-size 4096 --parallel 1 --predict 320 `
+  --alias noxin-local --host 127.0.0.1 --port 8092 --reasoning off --offline `
+  --no-agent --no-webui-mcp-proxy --no-webui --no-cache-prompt --cors-origins localhost --no-cors-credentials
+```
+
+W osobnym oknie PowerShell otwórz tunel zwrotny do LXC. Ustawienia `GatewayPorts` serwera SSH powinny ograniczać ten port do pętli lokalnej.
+
+```powershell
+ssh.exe -NT -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 `
+  -R 127.0.0.1:8092:127.0.0.1:8092 uzytkownik@ADRES_LXC
+```
+
+W LXC sprawdź połączenie z modelem przez `curl -fsS http://127.0.0.1:8092/health`. Po `git pull` zainstaluj aktualną bramę, dopisz `NOXIN_AI_MODEL_PORT=8092` do `/etc/noxin-ai/runtime.env` i zrestartuj usługę.
+
+```bash
+install -m 0644 deploy/ai/gateway.py /opt/noxin-ai/app/
+systemctl restart noxin-ai-gateway
+bash deploy/ai/wait-ready.sh
+```
+
+Zostaw uruchomione okna modelu i tunelu. Aby wrócić do modelu w LXC, usuń wpis `NOXIN_AI_MODEL_PORT` z `runtime.env` i zrestartuj `noxin-ai-gateway`.
+
 ## 7. Dostęp do publicznych stron
 
 Domyślnie wyłączony. W `/etc/noxin-ai/runtime.env` ustaw `NOXIN_AI_PUBLIC_WEB=1` i wykonaj `systemctl restart noxin-ai-gateway`. W Noxin wklej publiczny adres HTTPS i wybierz „Pobierz tekst strony”. Funkcja pobiera HTML lub tekst po publicznym IPv4, bez przekierowań i parametrów adresu. Strona widzi zwykłe żądanie pobrania podanego URL. Pytania, historia, pliki i wynik analizy przepływają wyłącznie przez LAN i gniazda lokalne. Do modelu trafia do 1800 znaków pobranego tekstu po wysłaniu wiadomości.
